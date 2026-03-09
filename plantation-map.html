@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgroMap — Sistem Monitoring Perkebunan</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --soil: #2C1A0E;
+    --bark: #3D2B1F;
+    --moss: #1E3A2F;
+    --leaf: #2D5A3D;
+    --sage: #4A7C59;
+    --mint: #6BA888;
+    --cream: #F5EDD8;
+    --parchment: #EDE0C4;
+    --gold: #C9972B;
+    --amber: #E8B84B;
+    --rust: #A0522D;
+    --mist: rgba(245, 237, 216, 0.07);
+    --panel: #1A2E23;
+    --card: #1F3428;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--soil);
+    color: var(--cream);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--bark);
+    border-bottom: 1px solid rgba(201,151,43,0.25);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1000;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--leaf), var(--sage));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+
+  .logo-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--cream);
+    letter-spacing: 0.02em;
+  }
+
+  .logo-text span { color: var(--amber); }
+
+  .header-center {
+    display: flex; gap: 6px;
+  }
+
+  .tab-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: rgba(245,237,216,0.5);
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .tab-btn.active {
+    background: var(--moss);
+    border-color: rgba(107,168,136,0.3);
+    color: var(--mint);
+  }
+
+  .tab-btn:hover:not(.active) {
+    color: var(--cream);
+    background: var(--mist);
+  }
+
+  .header-right {
+    display: flex; align-items: center; gap: 16px;
+  }
+
+  .status-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--mint);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--mint);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .timestamp {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: rgba(245,237,216,0.35);
+  }
+
+  /* ── MAIN LAYOUT ── */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── MAP SIDE ── */
+  .map-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #map {
+    width: 100%; height: 100%;
+  }
+
+  .map-overlay-top {
+    position: absolute;
+    top: 16px; left: 16px; right: 16px;
+    display: flex; gap: 8px;
+    z-index: 500;
+    pointer-events: none;
+  }
+
+  .map-badge {
+    background: rgba(26,46,35,0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(107,168,136,0.2);
+    border-radius: 8px;
+    padding: 8px 14px;
+    pointer-events: all;
+  }
+
+  .map-badge-label {
+    font-size: 10px;
+    color: rgba(245,237,216,0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+  }
+
+  .map-badge-value {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--amber);
+    margin-top: 1px;
+  }
+
+  .layer-control {
+    position: absolute;
+    bottom: 24px; left: 16px;
+    z-index: 500;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+
+  .layer-btn {
+    background: rgba(26,46,35,0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(107,168,136,0.2);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    color: rgba(245,237,216,0.6);
+    cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    transition: all 0.2s;
+  }
+
+  .layer-btn.active { color: var(--mint); border-color: rgba(107,168,136,0.45); }
+  .layer-btn:hover { color: var(--cream); }
+
+  .layer-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── RIGHT PANEL ── */
+  .side-panel {
+    width: 360px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-left: 1px solid rgba(201,151,43,0.15);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    flex-shrink: 0;
+  }
+
+  .panel-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--cream);
+  }
+
+  .panel-subtitle {
+    font-size: 11px;
+    color: rgba(245,237,216,0.4);
+    margin-top: 2px;
+  }
+
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .panel-body::-webkit-scrollbar { width: 4px; }
+  .panel-body::-webkit-scrollbar-track { background: transparent; }
+  .panel-body::-webkit-scrollbar-thumb { background: rgba(107,168,136,0.2); border-radius: 2px; }
+
+  /* ── WEATHER CARD ── */
+  .weather-card {
+    background: linear-gradient(135deg, #1A3D2C, #162E22);
+    border: 1px solid rgba(107,168,136,0.2);
+    border-radius: 12px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .weather-card::before {
+    content: '';
+    position: absolute;
+    top: -20px; right: -20px;
+    width: 80px; height: 80px;
+    background: radial-gradient(circle, rgba(107,168,136,0.12), transparent 70%);
+    border-radius: 50%;
+  }
+
+  .weather-top {
+    display: flex; justify-content: space-between; align-items: flex-start;
+  }
+
+  .weather-temp {
+    font-family: 'Playfair Display', serif;
+    font-size: 42px;
+    font-weight: 700;
+    color: var(--cream);
+    line-height: 1;
+  }
+
+  .weather-temp sup { font-size: 18px; vertical-align: super; }
+
+  .weather-icon { font-size: 36px; }
+
+  .weather-desc {
+    font-size: 13px;
+    color: var(--mint);
+    margin-top: 4px;
+  }
+
+  .weather-loc {
+    font-size: 11px;
+    color: rgba(245,237,216,0.4);
+    margin-top: 2px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .weather-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .weather-stat {
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+    padding: 8px;
+    text-align: center;
+  }
+
+  .weather-stat-label {
+    font-size: 10px;
+    color: rgba(245,237,216,0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .weather-stat-val {
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    color: var(--amber);
+    margin-top: 3px;
+    font-weight: 500;
+  }
+
+  /* ── SECTION TITLE ── */
+  .section-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(245,237,216,0.35);
+    margin-bottom: -6px;
+  }
+
+  /* ── BLOCK CARDS ── */
+  .block-card {
+    background: var(--card);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 13px 15px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .block-card:hover {
+    border-color: rgba(107,168,136,0.3);
+    background: #243C2E;
+  }
+
+  .block-card.selected {
+    border-color: var(--mint);
+    background: #1E3D2C;
+  }
+
+  .block-top {
+    display: flex; justify-content: space-between; align-items: center;
+  }
+
+  .block-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--cream);
+  }
+
+  .block-type {
+    font-size: 11px;
+    color: rgba(245,237,216,0.45);
+    margin-top: 2px;
+  }
+
+  .block-status {
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-weight: 600;
+  }
+
+  .status-baik { background: rgba(45,90,61,0.5); color: #7EC89A; border: 1px solid rgba(126,200,154,0.3); }
+  .status-perhatian { background: rgba(200,150,43,0.2); color: #E8B84B; border: 1px solid rgba(232,184,75,0.3); }
+  .status-kritis { background: rgba(160,82,45,0.3); color: #E07050; border: 1px solid rgba(224,112,80,0.3); }
+
+  .block-metrics {
+    display: flex; gap: 16px;
+    margin-top: 10px;
+  }
+
+  .block-metric {
+    display: flex; flex-direction: column;
+  }
+
+  .metric-label {
+    font-size: 10px;
+    color: rgba(245,237,216,0.35);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .metric-val {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--cream);
+    margin-top: 2px;
+  }
+
+  .block-bar-wrap {
+    margin-top: 10px;
+    height: 3px;
+    background: rgba(255,255,255,0.07);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .block-bar {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.5s ease;
+  }
+
+  /* ── GEO CARD ── */
+  .geo-card {
+    background: var(--card);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 14px 15px;
+  }
+
+  .geo-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .geo-item {
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  .geo-label {
+    font-size: 10px;
+    color: rgba(245,237,216,0.35);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .geo-val {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--cream);
+    margin-top: 4px;
+  }
+
+  .geo-sub {
+    font-size: 10px;
+    color: rgba(245,237,216,0.35);
+    margin-top: 2px;
+  }
+
+  /* ── FORECAST ── */
+  .forecast-row {
+    display: flex; gap: 6px;
+  }
+
+  .forecast-item {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 8px;
+    text-align: center;
+  }
+
+  .forecast-day {
+    font-size: 10px;
+    color: rgba(245,237,216,0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .forecast-icon { font-size: 18px; margin: 4px 0; }
+
+  .forecast-temp {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--cream);
+  }
+
+  .forecast-rain {
+    font-size: 10px;
+    color: #7EC8E3;
+    margin-top: 2px;
+  }
+
+  /* ── DETAIL PANEL ── */
+  .detail-panel {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: linear-gradient(180deg, transparent, rgba(26,46,35,0.98) 30%);
+    padding: 20px 20px 16px;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+    z-index: 600;
+  }
+
+  .detail-panel.visible { transform: translateY(0); }
+
+  .detail-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .detail-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 16px;
+    color: var(--cream);
+  }
+
+  .close-btn {
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: var(--cream);
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ── LEAFLET CUSTOM ── */
+  .leaflet-container { background: #0f1f16; }
+
+  .custom-marker {
+    display: flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px;
+    border-radius: 50% 50% 50% 4px;
+    transform: rotate(-45deg);
+    border: 2px solid rgba(255,255,255,0.3);
+    font-size: 14px;
+  }
+
+  .custom-marker span { transform: rotate(45deg); display: block; }
+
+  .leaflet-popup-content-wrapper {
+    background: rgba(26,46,35,0.97);
+    border: 1px solid rgba(107,168,136,0.3);
+    border-radius: 10px;
+    color: var(--cream);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  .leaflet-popup-tip { background: rgba(26,46,35,0.97); }
+
+  .popup-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .popup-row {
+    display: flex; justify-content: space-between;
+    font-size: 12px;
+    color: rgba(245,237,216,0.6);
+    margin: 3px 0;
+  }
+
+  .popup-row span:last-child {
+    font-family: 'DM Mono', monospace;
+    color: var(--amber);
+  }
+
+  /* Humidity bar */
+  .hum-bar { height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 8px; }
+  .hum-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, #4A7C59, #7EC8E3); }
+
+  /* Animations */
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .panel-body > * {
+    animation: fadeSlideIn 0.4s ease forwards;
+  }
+
+  .panel-body > *:nth-child(1) { animation-delay: 0.05s; }
+  .panel-body > *:nth-child(2) { animation-delay: 0.1s; }
+  .panel-body > *:nth-child(3) { animation-delay: 0.15s; }
+  .panel-body > *:nth-child(4) { animation-delay: 0.2s; }
+  .panel-body > *:nth-child(5) { animation-delay: 0.25s; }
+  .panel-body > *:nth-child(6) { animation-delay: 0.3s; }
+  .panel-body > *:nth-child(7) { animation-delay: 0.35s; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🌿</div>
+    <div class="logo-text">Agro<span>Map</span></div>
+  </div>
+
+  <div class="header-center">
+    <button class="tab-btn active">🗺 Peta</button>
+    <button class="tab-btn">📊 Analitik</button>
+    <button class="tab-btn">📅 Jadwal</button>
+    <button class="tab-btn">⚠️ Peringatan</button>
+  </div>
+
+  <div class="header-right">
+    <div class="status-badge">
+      <div class="status-dot"></div>
+      Live Monitoring
+    </div>
+    <div class="timestamp" id="clock">--:--:--</div>
+  </div>
+</header>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- MAP -->
+  <div class="map-container">
+    <div id="map"></div>
+
+    <!-- Top badges -->
+    <div class="map-overlay-top">
+      <div class="map-badge">
+        <div class="map-badge-label">Total Lahan</div>
+        <div class="map-badge-value">847 Ha</div>
+      </div>
+      <div class="map-badge">
+        <div class="map-badge-label">Blok Aktif</div>
+        <div class="map-badge-value">12 Blok</div>
+      </div>
+      <div class="map-badge">
+        <div class="map-badge-label">Elevasi Rata-rata</div>
+        <div class="map-badge-value">1.240 mdpl</div>
+      </div>
+      <div class="map-badge">
+        <div class="map-badge-label">Kelembapan Tanah</div>
+        <div class="map-badge-value">67%</div>
+      </div>
+    </div>
+
+    <!-- Layer controls -->
+    <div class="layer-control">
+      <button class="layer-btn active" onclick="toggleLayer(this, 'blok')">
+        <div class="layer-dot" style="background:#6BA888"></div> Blok Kebun
+      </button>
+      <button class="layer-btn active" onclick="toggleLayer(this, 'sensor')">
+        <div class="layer-dot" style="background:#E8B84B"></div> Sensor
+      </button>
+      <button class="layer-btn" onclick="toggleLayer(this, 'irigasi')">
+        <div class="layer-dot" style="background:#7EC8E3"></div> Irigasi
+      </button>
+      <button class="layer-btn" onclick="toggleLayer(this, 'kontur')">
+        <div class="layer-dot" style="background:#C9972B"></div> Kontur
+      </button>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="side-panel">
+    <div class="panel-header">
+      <div class="panel-title">Dashboard Kebun</div>
+      <div class="panel-subtitle">Surabrata, Kab. Tabanan, Bali — Update: 2 menit lalu</div>
+    </div>
+
+    <div class="panel-body">
+
+      <!-- WEATHER -->
+      <div class="weather-card">
+        <div class="weather-top">
+          <div>
+            <div class="weather-temp">24<sup>°C</sup></div>
+            <div class="weather-desc">Berawan Sebagian</div>
+            <div class="weather-loc">📍 Surabrata, Tabanan · 350 mdpl</div>
+          </div>
+          <div class="weather-icon">⛅</div>
+        </div>
+        <div class="weather-grid">
+          <div class="weather-stat">
+            <div class="weather-stat-label">Kelembapan</div>
+            <div class="weather-stat-val">72%</div>
+          </div>
+          <div class="weather-stat">
+            <div class="weather-stat-label">Angin</div>
+            <div class="weather-stat-val">8 km/h</div>
+          </div>
+          <div class="weather-stat">
+            <div class="weather-stat-label">Hujan</div>
+            <div class="weather-stat-val">12mm</div>
+          </div>
+          <div class="weather-stat">
+            <div class="weather-stat-label">UV Index</div>
+            <div class="weather-stat-val">Rendah</div>
+          </div>
+          <div class="weather-stat">
+            <div class="weather-stat-label">Tekanan</div>
+            <div class="weather-stat-val">872 hPa</div>
+          </div>
+          <div class="weather-stat">
+            <div class="weather-stat-label">Embun</div>
+            <div class="weather-stat-val">18°C</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FORECAST -->
+      <div class="section-title">Prakiraan 5 Hari</div>
+      <div class="forecast-row">
+        <div class="forecast-item">
+          <div class="forecast-day">Sen</div>
+          <div class="forecast-icon">⛅</div>
+          <div class="forecast-temp">24°</div>
+          <div class="forecast-rain">12mm</div>
+        </div>
+        <div class="forecast-item">
+          <div class="forecast-day">Sel</div>
+          <div class="forecast-icon">🌧</div>
+          <div class="forecast-temp">21°</div>
+          <div class="forecast-rain">38mm</div>
+        </div>
+        <div class="forecast-item">
+          <div class="forecast-day">Rab</div>
+          <div class="forecast-icon">🌧</div>
+          <div class="forecast-temp">20°</div>
+          <div class="forecast-rain">25mm</div>
+        </div>
+        <div class="forecast-item">
+          <div class="forecast-day">Kam</div>
+          <div class="forecast-icon">🌤</div>
+          <div class="forecast-temp">23°</div>
+          <div class="forecast-rain">5mm</div>
+        </div>
+        <div class="forecast-item">
+          <div class="forecast-day">Jum</div>
+          <div class="forecast-icon">☀️</div>
+          <div class="forecast-temp">26°</div>
+          <div class="forecast-rain">0mm</div>
+        </div>
+      </div>
+
+      <!-- GEO -->
+      <div class="section-title">Kondisi Geografis</div>
+      <div class="geo-card">
+        <div class="geo-grid">
+          <div class="geo-item">
+            <div class="geo-label">Elevasi</div>
+            <div class="geo-val">1.240 mdpl</div>
+            <div class="geo-sub">Zona dataran tinggi</div>
+          </div>
+          <div class="geo-item">
+            <div class="geo-label">Kemiringan</div>
+            <div class="geo-val">8–15°</div>
+            <div class="geo-sub">Lereng sedang</div>
+          </div>
+          <div class="geo-item">
+            <div class="geo-label">Jenis Tanah</div>
+            <div class="geo-val">Andosol</div>
+            <div class="geo-sub">pH 5.8 – Subur</div>
+          </div>
+          <div class="geo-item">
+            <div class="geo-label">Curah Hujan</div>
+            <div class="geo-val">2.400 mm</div>
+            <div class="geo-sub">Rata-rata/tahun</div>
+          </div>
+          <div class="geo-item">
+            <div class="geo-label">Koordinat</div>
+            <div class="geo-val">8.45°S</div>
+            <div class="geo-sub">114.98°E · Tabanan</div>
+          </div>
+          <div class="geo-item">
+            <div class="geo-label">Aspek Lereng</div>
+            <div class="geo-val">Tenggara</div>
+            <div class="geo-sub">Paparan optimal</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLOK LIST -->
+      <div class="section-title">Status Per Blok</div>
+
+      <div class="block-card selected" onclick="selectBlock(this, 'A1')">
+        <div class="block-top">
+          <div>
+            <div class="block-name">Blok A1 — Kopi Arabika</div>
+            <div class="block-type">Luas: 42 Ha · Umur: 4 tahun · Panen: Mar 2026</div>
+          </div>
+          <span class="block-status status-baik">Baik</span>
+        </div>
+        <div class="block-metrics">
+          <div class="block-metric">
+            <span class="metric-label">Kelembapan</span>
+            <span class="metric-val">74%</span>
+          </div>
+          <div class="block-metric">
+            <span class="metric-label">Suhu Tanah</span>
+            <span class="metric-val">22°C</span>
+          </div>
+          <div class="block-metric">
+            <span class="metric-label">Estimasi</span>
+            <span class="metric-val">18 ton</span>
+          </div>
+        </div>
+        <div class="block-bar-wrap">
+          <div class="block-bar" style="width:74%;background:linear-gradient(90deg,#4A7C59,#7EC89A)"></div>
+        </div>
+      </div>
+
+      <div class="block-card" onclick="selectBlock(this, 'B2')">
+        <div class="block-top">
+          <div>
+            <div class="block-name">Blok B2 — Kopi Robusta</div>
+            <div class="block-type">Luas: 68 Ha · Umur: 7 tahun · Panen: Apr 2026</div>
+          </div>
+          <span class="block-status status-baik">Baik</span>
+        </div>
+        <div class="block-metrics">
+          <div class="block-metric">
+            <span class="metric-label">Kelembapan</span>
+            <span class="metric-val">68%</span>
+          </div>
+          <div class="block-metric">
+            <span class="metric-label">Suhu Tanah</span>
+            <span class="metric-val">24°C</span>
+          </div>
+          <div class="block-metric">
+            <span class="metric-label">Estimasi</span>
+            <span class="metric-val">32 ton</span>
+          </div>
+        </div>
+        <div class="block-bar-wrap">
+          <div class="block-bar" style="width:68%;background:linear-gradient(90deg,#4A7C59,#7EC89A)"></div>
+        </div>
+      </div>
+
+      <div class="block-card" onclick="selectBlock(this, 'C3')">
+        <div class="block-top">
+          <div>
+            <div class="block-name">Blok C3 — Kakao Lindak</div>
+            <div class="block-type">Luas: 55 Ha · Umur: 5 tahun · Panen: Mei 2026</div>
+          </div>
+          <span class="block-status status-perhatian">Perhatian</span>
+        </div>
+        <div class="block-metrics">
+          <div class="block-metric">
+            <span class="metric-label">Kelembapan</span>
+            <span class="metric-val">52%</span>
+          </div>
+          <div class="block-metric">
+            <span class="metric-label">Suhu Tanah</span>
+            <span class="metric-val">28°C</span>
+          </div>
+          <div class="block-metric">
+            <span class="metric-label">Estimasi</span>
+            <span class="metric-val">22 ton</span>
+          </div>
+        </div>
+        <div class="block-bar-wrap">
+          <div class="block-bar" style="width:52%;background:linear-gradient(90deg,#C9972B,#E8B84B)"></div>
+        </div>
+      </div>
+
+      <div class="block-card" onclick="selectBlock(this, 'D4')">
+        <div class="block-top">
+          <div>
+            <div class="block-name">Blok D4 — Teh Hijau</div>
+            <div class="block-type">Luas: 38 Ha · Umur: 10 tahun · Panen: Jun 2026</div>
+          </div>
+          <span class="block-status status-kritis">Kritis</span>
+        </div>
+        <div class="block-metrics">
+          <div class="block-metric">
+            <span class="metric-label">Kelembapan</span>
+            <span class="metric-val">31%</span>
+          </div>
+          <div class="block-metric">
+            <span class="metric-label">Suhu Tanah</span>
+            <span class="metric-val">33°C</span>
+          </div>
+          <div class="block-metric">
+            <span class="metric-label">Estimasi</span>
+            <span class="metric-val">9 ton</span>
+          </div>
+        </div>
+        <div class="block-bar-wrap">
+          <div class="block-bar" style="width:31%;background:linear-gradient(90deg,#A0522D,#E07050)"></div>
+        </div>
+      </div>
+
+      <div class="block-card" onclick="selectBlock(this, 'E5')">
+        <div class="block-top">
+          <div>
+            <div class="block-name">Blok E5 — Kakao Mulia</div>
+            <div class="block-type">Luas: 47 Ha · Umur: 3 tahun · Panen: Jul 2026</div>
+          </div>
+          <span class="block-status status-baik">Baik</span>
+        </div>
+        <div class="block-metrics">
+          <div class="block-metric">
+            <span class="metric-label">Kelembapan</span>
+            <span class="metric-val">78%</span>
+          </div>
+          <div class="block-metric">
+            <span class="metric-label">Suhu Tanah</span>
+            <span class="metric-val">21°C</span>
+          </div>
+          <div class="block-metric">
+            <span class="metric-label">Estimasi</span>
+            <span class="metric-val">14 ton</span>
+          </div>
+        </div>
+        <div class="block-bar-wrap">
+          <div class="block-bar" style="width:78%;background:linear-gradient(90deg,#4A7C59,#7EC89A)"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CLOCK ──
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── MAP INIT ──
+const map = L.map('map', {
+  center: [-8.455916, 114.981895],
+  zoom: 14,
+  zoomControl: false,
+  attributionControl: false
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  maxZoom: 19
+}).addTo(map);
+
+L.control.zoom({ position: 'topright' }).addTo(map);
+
+// ── PLANTATION BLOCKS ──
+const blocks = [
+  {
+    id: 'A1', name: 'Blok A1 – Kopi Arabika',
+    coords: [[-8.450,114.975],[-8.450,114.983],[-8.457,114.983],[-8.457,114.975]],
+    color: '#4A7C59', fillColor: '#2D5A3D',
+    humid: '74%', temp: '22°C', est: '18 ton', status: 'Baik', statusColor: '#7EC89A'
+  },
+  {
+    id: 'B2', name: 'Blok B2 – Kopi Robusta',
+    coords: [[-8.458,114.975],[-8.458,114.984],[-8.466,114.984],[-8.466,114.975]],
+    color: '#5A8C69', fillColor: '#334A38',
+    humid: '68%', temp: '24°C', est: '32 ton', status: 'Baik', statusColor: '#7EC89A'
+  },
+  {
+    id: 'C3', name: 'Blok C3 – Kakao Lindak',
+    coords: [[-8.450,114.984],[-8.450,114.993],[-8.458,114.993],[-8.458,114.984]],
+    color: '#C9972B', fillColor: '#5A4010',
+    humid: '52%', temp: '28°C', est: '22 ton', status: 'Perhatian', statusColor: '#E8B84B'
+  },
+  {
+    id: 'D4', name: 'Blok D4 – Teh Hijau',
+    coords: [[-8.459,114.984],[-8.459,114.992],[-8.466,114.992],[-8.466,114.984]],
+    color: '#A0522D', fillColor: '#4A2010',
+    humid: '31%', temp: '33°C', est: '9 ton', status: 'Kritis', statusColor: '#E07050'
+  },
+  {
+    id: 'E5', name: 'Blok E5 – Kakao Mulia',
+    coords: [[-8.467,114.975],[-8.467,114.993],[-8.473,114.993],[-8.473,114.975]],
+    color: '#6BA888', fillColor: '#2A4A38',
+    humid: '78%', temp: '21°C', est: '14 ton', status: 'Baik', statusColor: '#7EC89A'
+  }
+];
+
+const blockLayers = {};
+
+blocks.forEach(b => {
+  const poly = L.polygon(b.coords, {
+    color: b.color,
+    fillColor: b.fillColor,
+    fillOpacity: 0.45,
+    weight: 2,
+    dashArray: null
+  });
+
+  poly.bindPopup(`
+    <div style="min-width:180px;">
+      <div class="popup-name">${b.name}</div>
+      <div class="popup-row"><span>Kelembapan</span><span>${b.humid}</span></div>
+      <div class="popup-row"><span>Suhu Tanah</span><span>${b.temp}</span></div>
+      <div class="popup-row"><span>Est. Produksi</span><span>${b.est}</span></div>
+      <div class="popup-row"><span>Status</span><span style="color:${b.statusColor}">${b.status}</span></div>
+      <div class="hum-bar"><div class="hum-fill" style="width:${b.humid}"></div></div>
+    </div>
+  `, { className: '' });
+
+  poly.addTo(map);
+  blockLayers[b.id] = poly;
+
+  // Center label
+  const center = poly.getBounds().getCenter();
+  L.marker(center, {
+    icon: L.divIcon({
+      html: `<div style="font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;color:rgba(245,237,216,0.9);background:rgba(26,46,35,0.75);padding:3px 8px;border-radius:4px;border:1px solid rgba(107,168,136,0.3);white-space:nowrap;backdrop-filter:blur(4px)">${b.id}</div>`,
+      className: '',
+      iconAnchor: [20, 10]
+    })
+  }).addTo(map);
+});
+
+// ── SENSOR MARKERS ──
+const sensors = [
+  { lat: -8.453, lng: 114.978, label: 'S-01', type: '🌡', val: '72% | 22°C' },
+  { lat: -8.461, lng: 114.979, label: 'S-02', type: '💧', val: '52% | 28°C' },
+  { lat: -8.463, lng: 114.988, label: 'S-03', type: '🌡', val: '31% | 33°C' },
+  { lat: -8.453, lng: 114.988, label: 'S-04', type: '💧', val: '68% | 24°C' },
+  { lat: -8.470, lng: 114.984, label: 'S-05', type: '🌡', val: '78% | 21°C' },
+];
+
+const sensorGroup = L.layerGroup();
+
+sensors.forEach(s => {
+  const m = L.marker([s.lat, s.lng], {
+    icon: L.divIcon({
+      html: `<div style="width:30px;height:30px;background:rgba(232,184,75,0.15);border:1.5px solid rgba(232,184,75,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;backdrop-filter:blur(4px)">${s.type}</div>`,
+      className: '',
+      iconAnchor: [15, 15]
+    })
+  });
+  m.bindPopup(`<div class="popup-name">${s.label}</div><div class="popup-row"><span>Bacaan</span><span>${s.val}</span></div>`);
+  sensorGroup.addLayer(m);
+});
+
+sensorGroup.addTo(map);
+
+// ── LAYER TOGGLE ──
+let layerState = { blok: true, sensor: true, irigasi: false, kontur: false };
+
+function toggleLayer(btn, layer) {
+  btn.classList.toggle('active');
+  layerState[layer] = !layerState[layer];
+
+  if (layer === 'sensor') {
+    if (layerState.sensor) sensorGroup.addTo(map);
+    else map.removeLayer(sensorGroup);
+  }
+  if (layer === 'blok') {
+    Object.values(blockLayers).forEach(p => {
+      if (layerState.blok) p.addTo(map);
+      else map.removeLayer(p);
+    });
+  }
+}
+
+// ── BLOCK SELECTION ──
+function selectBlock(card, id) {
+  document.querySelectorAll('.block-card').forEach(c => c.classList.remove('selected'));
+  card.classList.add('selected');
+
+  const b = blockLayers[id];
+  if (b) {
+    map.fitBounds(b.getBounds(), { padding: [60, 60] });
+    b.openPopup();
+  }
+}
+</script>
+</body>
+</html>
